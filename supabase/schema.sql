@@ -9,8 +9,12 @@ create table if not exists public.projects (
   name        text not null,
   address     text,
   notes       text,
+  units       jsonb not null default '[]'::jsonb, -- daire/dükkan listesi (maliyet hesabı)
   created_at  timestamptz not null default now()
 );
+
+-- Eski kurulumlar için (zararsız, tekrar çalıştırılabilir)
+alter table public.projects add column if not exists units jsonb not null default '[]'::jsonb;
 
 -- Taşeron anlaşmaları (örn. sıvacı: 1250 m² × 120 ₺)
 create table if not exists public.agreements (

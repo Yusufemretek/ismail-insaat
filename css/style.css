@@ -245,3 +245,6 @@ td .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
   .card, .kpi { box-shadow: none; border-color: #ccc; break-inside: avoid; }
 }
 .form-intro { margin: 14px 18px 0; color: var(--muted); font-size: .9rem; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.seg-btn { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: .85rem; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+.seg-btn.on { background: var(--accent-soft); color: var(--accent); }

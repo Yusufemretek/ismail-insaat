@@ -84,6 +84,7 @@
     project: store.get("aktifProje", "all"),
     expFilter: { cat: "", month: "" },
     payFilter: { month: "" },
+    costBasis: store.get("maliyetEsasi", "projected"),
   };
 
   async function refresh(...tables) {
@@ -422,9 +423,9 @@
       <div class="kpis">
         <div class="kpi"><div class="label">Taşeron anlaşmaları</div><div class="value">${money(tA)}</div><div class="hint">${A.length} anlaşma</div></div>
         <div class="kpi"><div class="label">Taşerona ödenen</div><div class="value good">${money(tP)}</div><div class="hint">${P.length} ödeme</div></div>
-        <div class="kpi accent"><div class="label">Taşerona kalan borç</div><div class="value bad">${money(remaining)}</div><div class="hint">anlaşma − ödenen</div></div>
+        <div class="kpi"><div class="label">Taşerona kalan borç</div><div class="value bad">${money(remaining)}</div><div class="hint">anlaşma − ödenen</div></div>
         <div class="kpi"><div class="label">Diğer giderler</div><div class="value">${money(tE)}</div><div class="hint">eleman, yemek, muhasebe…</div></div>
-        <div class="kpi"><div class="label">Toplam harcama</div><div class="value">${money(tP + tE)}</div><div class="hint">ödemeler + giderler</div></div>
+        <div class="kpi accent"><div class="label">Tüm giderler</div><div class="value">${money(tP + tE)}</div><div class="hint">taşeron ödemeleri + diğer giderler</div></div>
       </div>
       <div class="grid-2">
         <div class="card">
@@ -583,7 +584,11 @@
         <select data-filter="exp-month"><option value="">Tüm aylar</option>${months.map((m) => `<option value="${m}" ${m === S.expFilter.month ? "selected" : ""}>${monthName(m)}</option>`).join("")}</select>
       </div>
       <div class="kpis">
-        <div class="kpi accent"><div class="label">Toplam</div><div class="value">${money(sum(E))}</div><div class="hint">${E.length} kayıt</div></div>
+        ${S.expFilter.cat ? "" : (() => {
+          const pays = byProject(S.payments).filter((x) => !S.expFilter.month || String(x.date || "").startsWith(S.expFilter.month));
+          return `<div class="kpi accent"><div class="label">Tüm giderler</div><div class="value">${money(sum(E) + sum(pays))}</div><div class="hint">taşeron ödemeleri ${money(sum(pays))} dahil</div></div>`;
+        })()}
+        <div class="kpi"><div class="label">Diğer giderler toplamı</div><div class="value">${money(sum(E))}</div><div class="hint">${E.length} kayıt</div></div>
         ${Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, v]) => `<div class="kpi"><div class="label">${esc(c)}</div><div class="value">${money(v)}</div></div>`).join("")}
       </div>
       <div class="card">
@@ -596,6 +601,139 @@
           <tfoot><tr><td colspan="${showProjectCol() ? 4 : 3}">Toplam</td><td class="r num">${money(sum(E))}</td><td></td></tr></tfoot>
         </table></div>` : emptyBox("Kayıtlı gider yok.", `<button class="btn primary" data-act="new-expense">+ Gider ekle</button>`)}
       </div>`;
+  }
+
+  // ---------- Maliyet ----------
+  const UNIT_TYPES = ["Daire", "Dükkan", "Ofis", "Depo", "Otopark"];
+  const unitsOf = (p) => (Array.isArray(p?.units) ? p.units : []);
+  const unitArea = (u) => (Number(u.count) || 0) * (Number(u.area) || 0);
+
+  function projectCost(pid) {
+    const A = S.agreements.filter((a) => a.project_id === pid);
+    const E = S.expenses.filter((e) => e.project_id === pid);
+    const paid = sum(S.payments.filter((x) => x.project_id === pid));
+    const exp = sum(E);
+    const committed = sum(A, (a) => Math.max(agrTotal(a), agrPaid(a))); // fazla ödeme varsa ödenen esas alınır
+    return { A, E, paid, exp, actual: paid + exp, projected: committed + exp };
+  }
+
+  function pageMaliyet() {
+    if (!S.projects.length) return `<div class="card">${emptyBox("Önce bir proje ekleyin.", `<button class="btn primary" data-act="new-project">+ Yeni proje</button>`)}</div>`;
+    if (S.project === "all") {
+      return `
+        <div class="page-head"><div><h1>Maliyet</h1><div class="muted small">Daire/dükkan girmek ve ayrıntıyı görmek için bir proje seçin.</div></div></div>
+        <div class="card"><div class="table-wrap"><table>
+          <thead><tr><th>Proje</th><th class="r">Satılabilir alan</th><th class="r">Tüm giderler</th><th class="r">Öngörülen maliyet</th><th class="r">m² maliyeti (öngörülen)</th><th></th></tr></thead>
+          <tbody>${S.projects.map((p) => {
+            const c = projectCost(p.id), m2 = sum(unitsOf(p), unitArea);
+            return `<tr><td><b>${esc(p.name)}</b></td><td class="r num">${m2 ? num(m2) + " m²" : "—"}</td>
+              <td class="r num">${money(c.actual)}</td><td class="r num">${money(c.projected)}</td>
+              <td class="r num">${m2 ? money(c.projected / m2) : "—"}</td>
+              <td><div class="row-actions"><button class="btn sm" data-act="select-project-cost" data-id="${esc(p.id)}">Aç</button></div></td></tr>`;
+          }).join("")}</tbody></table></div></div>`;
+    }
+
+    const p = S.projects.find((x) => x.id === S.project);
+    const U = unitsOf(p);
+    const c = projectCost(p.id);
+    const basis = S.costBasis === "actual" ? "actual" : "projected";
+    const cost = c[basis];
+    const m2 = sum(U, unitArea);
+    const perM2 = m2 ? cost / m2 : 0;
+
+    // tür bazında özet (Daire, Dükkan…)
+    const byType = {};
+    U.forEach((u) => { const t = (byType[u.type] ||= { count: 0, area: 0 }); t.count += Number(u.count) || 0; t.area += unitArea(u); });
+
+    // gider kalemleri
+    const rows = [];
+    const jobs = {};
+    c.A.forEach((a) => {
+      const k = "Taşeron: " + (a.job_type || "Diğer");
+      const j = (jobs[k] ||= { actual: 0, projected: 0 });
+      j.actual += agrPaid(a); j.projected += Math.max(agrTotal(a), agrPaid(a));
+    });
+    Object.entries(jobs).forEach(([k, v]) => rows.push({ k, ...v }));
+    const cats = {};
+    c.E.forEach((e) => (cats[e.category || "Diğer"] = (cats[e.category || "Diğer"] || 0) + (Number(e.amount) || 0)));
+    Object.entries(cats).forEach(([k, v]) => rows.push({ k, actual: v, projected: v }));
+    rows.sort((x, y) => y[basis] - x[basis]);
+
+    const seg = (v, label) => `<button class="seg-btn ${basis === v ? "on" : ""}" data-act="cost-basis" data-v="${v}">${label}</button>`;
+    return `
+      <div class="print-only"><h2>${esc(FIRMA)}</h2><p>Maliyet raporu · ${fmtDate(today())}</p></div>
+      <div class="page-head">
+        <div><h1>Maliyet</h1><div class="muted small">${esc(p.name)}</div></div>
+        <div class="actions no-print">
+          <div class="seg">${seg("projected", "Öngörülen")}${seg("actual", "Gerçekleşen")}</div>
+          <button class="btn" data-act="print">Yazdır</button>
+        </div>
+      </div>
+      <p class="muted small no-print" style="margin-top:-6px">${basis === "projected"
+        ? "<b>Öngörülen:</b> taşeron anlaşmalarının tamamı (kalan borçlar dahil) + diğer giderler. Bina bittiğinde ortaya çıkacak maliyet."
+        : "<b>Gerçekleşen:</b> bugüne kadar yapılan taşeron ödemeleri + diğer giderler."}</p>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Tüm giderler (gerçekleşen)</div><div class="value">${money(c.actual)}</div><div class="hint">ödemeler ${money(c.paid)} + giderler ${money(c.exp)}</div></div>
+        <div class="kpi"><div class="label">Öngörülen toplam maliyet</div><div class="value">${money(c.projected)}</div><div class="hint">taşerona kalan ${money(c.projected - c.actual)} dahil</div></div>
+        <div class="kpi"><div class="label">Satılabilir alan</div><div class="value">${num(m2)} m²</div><div class="hint">${Object.entries(byType).map(([t, v]) => `${num(v.count)} ${esc(t.toLocaleLowerCase("tr"))}`).join(" · ") || "bölüm girilmedi"}</div></div>
+        <div class="kpi accent"><div class="label">m² maliyeti (${basis === "projected" ? "öngörülen" : "gerçekleşen"})</div><div class="value">${m2 ? money(perM2) : "—"}</div><div class="hint">${m2 ? "maliyet ÷ toplam m²" : "aşağıdan daire/dükkan ekleyin"}</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Daireler &amp; dükkanlar</h2><button class="btn primary sm no-print" data-act="new-unit">+ Bölüm ekle</button></div>
+        ${U.length ? `<div class="table-wrap"><table>
+          <thead><tr><th>Tür</th><th>Tanım</th><th class="r">Adet</th><th class="r">Bir adet m²</th><th class="r">Toplam m²</th><th class="r">Bir adet maliyeti</th><th class="r">Toplam maliyet</th><th></th></tr></thead>
+          <tbody>${U.map((u) => `<tr>
+            <td><span class="badge ${u.type === "Daire" ? "" : "gray"}">${esc(u.type)}</span></td><td>${esc(u.label || "")}</td>
+            <td class="r num">${num(u.count)}</td><td class="r num">${num(u.area)} m²</td><td class="r num">${num(unitArea(u))} m²</td>
+            <td class="r num"><b>${money(perM2 * (Number(u.area) || 0))}</b></td><td class="r num">${money(perM2 * unitArea(u))}</td>
+            <td><div class="row-actions"><button class="btn sm ghost" data-act="edit-unit" data-id="${esc(u.id)}">Düzenle</button><button class="btn sm ghost danger" data-act="del-unit" data-id="${esc(u.id)}">Sil</button></div></td></tr>`).join("")}</tbody>
+          <tfoot>${Object.entries(byType).map(([t, v]) => `<tr><td colspan="2">${esc(t)} toplamı</td><td class="r num">${num(v.count)}</td><td></td><td class="r num">${num(v.area)} m²</td><td></td><td class="r num">${money(perM2 * v.area)}</td><td></td></tr>`).join("")}
+            <tr><td colspan="4">Genel toplam</td><td class="r num">${num(m2)} m²</td><td></td><td class="r num">${money(cost)}</td><td></td></tr></tfoot>
+        </table></div>
+        <p class="muted small" style="margin-bottom:0">Maliyet, bölümlerin m²'sine göre paylaştırılır: bir adet maliyeti = m² maliyeti × o bölümün m²'si.</p>`
+        : emptyBox("Bu projeye henüz daire veya dükkan girilmedi.<br>Örn. <i>Daire · 3+1 · 8 adet · 120 m²</i>, <i>Dükkan · 2 adet · 150 m²</i>", `<button class="btn primary" data-act="new-unit">+ Bölüm ekle</button>`)}
+      </div>
+
+      <div class="card">
+        <h2>Gider kalemleri</h2>
+        ${rows.length ? `<div class="table-wrap"><table>
+          <thead><tr><th>Kalem</th><th class="r">Gerçekleşen</th><th class="r">Öngörülen</th><th class="r">Pay</th>${m2 ? `<th class="r">m² başına</th>` : ""}</tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${esc(r.k)}</td><td class="r num">${money(r.actual)}</td><td class="r num">${money(r.projected)}</td>
+            <td class="r num">%${cost ? NUM.format((r[basis] / cost) * 100) : "0"}</td>${m2 ? `<td class="r num">${money(r[basis] / m2)}</td>` : ""}</tr>`).join("")}</tbody>
+          <tfoot><tr><td>Toplam</td><td class="r num">${money(c.actual)}</td><td class="r num">${money(c.projected)}</td><td class="r num">%100</td>${m2 ? `<td class="r num">${money(perM2)}</td>` : ""}</tr></tfoot>
+        </table></div>` : emptyBox("Henüz gider veya anlaşma yok.")}
+      </div>`;
+  }
+
+  function unitForm(u) {
+    const p = S.projects.find((x) => x.id === S.project);
+    openForm({
+      title: u ? "Bölümü düzenle" : "Daire / dükkan ekle",
+      values: u || { type: "Daire", count: 1 },
+      fields: [
+        { name: "type", label: "Tür", list: UNIT_TYPES, required: true },
+        { name: "label", label: "Tanım", placeholder: "örn. 3+1, zemin kat" },
+        { name: "count", label: "Adet", type: "number", required: true },
+        { name: "area", label: "Bir adedin m²'si", type: "number", required: true, placeholder: "örn. 120" },
+        { name: "_sum", type: "calc" },
+      ],
+      onChange: (v, form) => {
+        const t = (Number.isFinite(v.count) ? v.count : 0) * (Number.isFinite(v.area) ? v.area : 0);
+        $("#f__sum", form).innerHTML = `<span class="muted small">${num(v.count || 0)} adet × ${num(v.area || 0)} m²</span><span class="big">= ${num(t)} m²</span>`;
+      },
+      onSubmit: async (v) => {
+        if (!(v.count > 0) || !(v.area > 0)) throw new Error("Adet ve m² sıfırdan büyük olmalı.");
+        const row = { id: u?.id || Math.random().toString(36).slice(2, 10), type: v.type, label: v.label || "", count: v.count, area: v.area };
+        const list = unitsOf(p).slice();
+        const i = list.findIndex((x) => x.id === row.id);
+        if (i >= 0) list[i] = row; else list.push(row);
+        await db.update("projects", p.id, { units: list });
+        await refresh("projects");
+        render();
+        toast(u ? "Bölüm güncellendi" : "Bölüm eklendi");
+      },
+    });
   }
 
   function pageBelgeler() {
@@ -631,7 +769,7 @@
           <div class="rc-amounts">
             <div><div class="k">Anlaşmalar</div><b>${money(tA)}</b></div>
             <div><div class="k">Kalan borç</div><b class="bad">${money(tA - tP)}</b></div>
-            <div><div class="k">Toplam harcama</div><b>${money(tP + tE)}</b></div>
+            <div><div class="k">Tüm giderler</div><b>${money(tP + tE)}</b></div>
           </div></div>`;
       }).join("")}</div>` : `<div class="card">${emptyBox("Henüz proje yok.", `<button class="btn primary" data-act="new-project">+ Yeni proje</button>`)}</div>`}`;
   }
@@ -662,7 +800,7 @@
 
   const PAGES = {
     ozet: pageOzet, anlasmalar: pageAnlasmalar, anlasma: pageAnlasma, odemeler: pageOdemeler,
-    giderler: pageGiderler, belgeler: pageBelgeler, projeler: pageProjeler, ayarlar: pageAyarlar,
+    giderler: pageGiderler, maliyet: pageMaliyet, belgeler: pageBelgeler, projeler: pageProjeler, ayarlar: pageAyarlar,
   };
 
   function currentRoute() {
@@ -709,6 +847,19 @@
       await refresh();
       render();
       toast("Proje silindi");
+    },
+    "select-project-cost": (d) => { S.project = d.id; store.set("aktifProje", d.id); renderProjectSelect(); render(); },
+    "cost-basis": (d) => { S.costBasis = d.v; store.set("maliyetEsasi", d.v); render(); },
+    "new-unit": () => unitForm(),
+    "edit-unit": (d) => unitForm(unitsOf(S.projects.find((p) => p.id === S.project)).find((u) => u.id === d.id)),
+    "del-unit": async (d) => {
+      const p = S.projects.find((x) => x.id === S.project);
+      const u = unitsOf(p).find((x) => x.id === d.id);
+      if (!confirm(`${u.type}${u.label ? " (" + u.label + ")" : ""} – ${num(u.count)} adet silinsin mi?`)) return;
+      await db.update("projects", p.id, { units: unitsOf(p).filter((x) => x.id !== u.id) });
+      await refresh("projects");
+      render();
+      toast("Bölüm silindi");
     },
     "new-agreement": () => agreementForm(),
     "edit-agreement": (d) => agreementForm(agrById(d.id)),
