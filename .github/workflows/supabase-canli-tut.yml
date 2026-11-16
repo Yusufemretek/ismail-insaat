@@ -1,0 +1,34 @@
+# Supabase ücretsiz planı 7 gün kullanılmayan projeyi duraklatır.
+# Bu görev haftada 3 kez veritabanına küçük bir istek atarak projeyi açık tutar.
+# Supabase bilgileri js/config.js dosyasından okunur (tek yerden yönetim).
+name: Supabase canlı tut
+
+on:
+  schedule:
+    - cron: "0 6 * * 1,3,5" # Pazartesi, Çarşamba, Cuma 09:00 (TR)
+  workflow_dispatch: # GitHub > Actions sekmesinden elle de çalıştırılabilir
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Supabase'e istek at
+        run: |
+          URL=$(grep -oP 'SUPABASE_URL:\s*"\K[^"]+' js/config.js)
+          KEY=$(grep -oP 'SUPABASE_ANON_KEY:\s*"\K[^"]+' js/config.js)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "config.js içinde Supabase bilgisi yok"; exit 1; fi
+          curl -fsS --retry 3 --retry-delay 10 -o /dev/null -w "Durum: %{http_code}\n" \
+            "$URL/rest/v1/projects?select=id&limit=1" -H "apikey: $KEY"
+
+      # GitHub, depoda 60 gün hiç değişiklik olmazsa zamanlanmış görevleri kapatır.
+      # Bu adım görevi yeniden etkinleştirerek o süreyi sıfırlar.
+      - name: Görevi etkin tut
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/supabase-canli-tut.yml/enable"
