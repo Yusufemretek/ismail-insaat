@@ -2,7 +2,14 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#c2410c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Muhasebe">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="robots" content="noindex, nofollow">
   <title>İnşaat Muhasebe</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23c2410c'/><path d='M7 24V14l9-6 9 6v10h-6v-6h-6v6z' fill='white'/></svg>">
@@ -52,6 +59,20 @@
       <b>Yerel mod:</b> Veriler yalnızca bu tarayıcıda saklanıyor. Kalıcı ve çok cihazlı kullanım için Supabase ayarlarını yapın (README).
     </div>
     <main id="view" class="view"></main>
+
+    <!-- Mobil alt menü -->
+    <nav class="bottom-nav" id="bottomNav" aria-label="Ana menü">
+      <a href="#/ozet" data-page="ozet">
+        <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Özet</span></a>
+      <a href="#/anlasmalar" data-page="anlasmalar">
+        <svg viewBox="0 0 24 24"><path d="M8 3h8l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3M9 12h6M9 16h6M9 8h2"/></svg><span>Anlaşmalar</span></a>
+      <button type="button" class="fab" data-act="quick-add" aria-label="Yeni kayıt ekle">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <a href="#/giderler" data-page="giderler">
+        <svg viewBox="0 0 24 24"><path d="M4 4h16v16l-3-2-3 2-2-2-2 2-3-2-3 2zM8 9h8M8 13h5"/></svg><span>Giderler</span></a>
+      <button type="button" data-act="more-menu" data-group="more">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Diğer</span></button>
+    </nav>
   </div>
 
   <dialog id="modal" class="modal"></dialog>

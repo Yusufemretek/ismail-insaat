@@ -248,3 +248,95 @@ td .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .seg-btn { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; font-size: .85rem; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
 .seg-btn.on { background: var(--accent-soft); color: var(--accent); }
+
+/* =============================================================
+   MOBİL
+   ============================================================= */
+/* iOS'ta kutucuğa dokununca ekranın yakınlaşmaması için en az 16px */
+input, select, textarea { font-size: 16px; }
+
+.bottom-nav { display: none; }
+.sheet-list { display: flex; flex-direction: column; padding: 8px; overflow-y: auto; }
+.sheet-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
+  padding: 14px 14px; border: 0; border-radius: 10px; background: transparent;
+  color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer;
+}
+.sheet-item:hover, .sheet-item:active { background: var(--surface-2); }
+.sheet-item b { font-size: 1rem; }
+.sheet-item small { color: var(--muted); font-size: .82rem; }
+
+@media (max-width: 760px) {
+  .tabs { display: none; }
+  .topbar { padding-top: max(10px, env(safe-area-inset-top)); }
+  .view { padding: 16px 12px calc(96px + env(safe-area-inset-bottom)); }
+  .banner { margin: 10px 12px 0; }
+
+  .bottom-nav {
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: end;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  .bottom-nav a, .bottom-nav button:not(.fab) {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 4px 0; border: 0; background: none; color: var(--muted);
+    font: inherit; font-size: .7rem; font-weight: 600; text-decoration: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bottom-nav svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .bottom-nav .active { color: var(--accent); }
+  .bottom-nav .fab {
+    justify-self: center; width: 54px; height: 54px; margin-top: -22px;
+    border-radius: 50%; border: 4px solid var(--surface);
+    background: var(--accent); color: var(--accent-text);
+    display: grid; place-items: center; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(194, 65, 12, .35);
+  }
+  .bottom-nav .fab svg { width: 26px; height: 26px; stroke-width: 2.6; }
+
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+
+  h1 { font-size: 1.25rem; }
+  .page-head { margin-bottom: 12px; }
+  .page-head .actions { width: 100%; }
+  .page-head .actions .btn { flex: 1 1 auto; }
+
+  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpis > .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  /* + butonu zaten var: sayfa başlığındaki hızlı ekleme butonlarını gizle */
+  .page-head .actions [data-act="new-payment"], .page-head .actions [data-act="new-expense"], .page-head .actions [data-act="new-agreement"] { display: none; }
+  .kpi { padding: 12px; }
+  .kpi .value { font-size: 1.1rem; overflow-wrap: anywhere; }
+  .card { padding: 14px 12px; }
+
+  .filters > * { max-width: none; }
+
+  /* Formlar alttan açılan pencere olarak */
+  .modal { width: 100vw; max-width: 100vw; margin: auto 0 0; max-height: 92vh; }
+  .modal-card { border-radius: 16px 16px 0 0; max-height: 92vh; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal-card footer .btn { flex: 1; padding: 12px; }
+}
+
+/* Tablolar telefonda kart görünümü */
+@media (max-width: 640px) {
+  .table-wrap { overflow: visible; margin: 0; padding: 0; }
+  .view table, .view thead, .view tbody, .view tfoot, .view tr, .view td { display: block; width: 100%; }
+  .view thead { display: none; }
+  .view tbody tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .view tbody tr:last-child { border-bottom: 0; }
+  .view td { padding: 3px 0; border: 0; text-align: right; overflow-wrap: anywhere; }
+  .view td::before { content: attr(data-label); float: left; margin-right: 12px; color: var(--muted); font-size: .8rem; font-weight: 500; line-height: 1.9; }
+  .view td::after { content: ""; display: table; clear: both; }
+  .view td:not([data-label])::before { content: none; }
+  .view td:not([data-label]) { text-align: left; }
+  .view td:empty { display: none; }
+  .view td.r, .view th.r { text-align: right; }
+  .view tfoot { border-top: 2px solid var(--border); margin-top: 4px; }
+  .view tfoot tr { padding: 8px 0; }
+  .view tfoot td { border: 0; }
+  .view tfoot td:first-child { font-size: .95rem; }
+  .view td .row-actions { width: 100%; justify-content: flex-end; }
+  .view td .row-actions .btn { padding: 8px 14px; font-size: .88rem; }
+}

@@ -803,6 +803,43 @@
     giderler: pageGiderler, maliyet: pageMaliyet, belgeler: pageBelgeler, projeler: pageProjeler, ayarlar: pageAyarlar,
   };
 
+  // Mobilde tablolar kart görünümüne döner: her hücreye sütun başlığını etiket olarak yaz
+  function labelTables(root) {
+    for (const t of root.querySelectorAll("table")) {
+      const heads = [...t.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+      for (const tr of t.querySelectorAll("tbody tr, tfoot tr")) {
+        let col = 0;
+        [...tr.cells].forEach((td, i) => {
+          const isFootTitle = tr.parentElement.tagName === "TFOOT" && i === 0;
+          if (!isFootTitle && heads[col]) td.dataset.label = heads[col];
+          col += td.colSpan || 1;
+        });
+      }
+    }
+  }
+
+  const MORE_PAGES = [
+    { page: "odemeler", label: "Ödemeler", hint: "Taşerona yapılan tüm ödemeler" },
+    { page: "maliyet", label: "Maliyet", hint: "Daire / dükkan, m² maliyeti" },
+    { page: "belgeler", label: "Faturalar & Belgeler", hint: "Taranmış fatura ve dekontlar" },
+    { page: "projeler", label: "Projeler", hint: "Şantiyeleri yönet" },
+    { page: "ayarlar", label: "Ayarlar", hint: "Yedek, Excel, çıkış" },
+  ];
+
+  // Alttan açılan seçim listesi (mobil menü)
+  function openSheet(title, items) {
+    const dlg = $("#modal");
+    dlg.innerHTML = `<div class="modal-card sheet">
+      <header><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-close aria-label="Kapat">×</button></header>
+      <div class="sheet-list">${items.map((it) => it.href
+        ? `<a class="sheet-item" href="${it.href}" data-sheet-close><b>${esc(it.label)}</b><small>${esc(it.hint || "")}</small></a>`
+        : `<button type="button" class="sheet-item" data-act="${it.act}" ${it.agr ? `data-agr="${esc(it.agr)}"` : ""} data-sheet-close><b>${esc(it.label)}</b><small>${esc(it.hint || "")}</small></button>`).join("")}</div>
+    </div>`;
+    dlg.oncancel = null;
+    $$("[data-close]", dlg).forEach((b) => (b.onclick = () => dlg.close()));
+    dlg.showModal();
+  }
+
   function currentRoute() {
     const [page, id] = location.hash.replace(/^#\/?/, "").split("/");
     return { page: PAGES[page] ? page : "ozet", id };
@@ -811,8 +848,10 @@
   function render() {
     const { page, id } = currentRoute();
     const navPage = page === "anlasma" ? "anlasmalar" : page;
-    $$("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.page === navPage));
+    $$("#tabs a, #bottomNav a").forEach((a) => a.classList.toggle("active", a.dataset.page === navPage));
+    $("#bottomNav [data-group=more]").classList.toggle("active", MORE_PAGES.some((m) => m.page === navPage));
     $("#view").innerHTML = PAGES[page](id);
+    labelTables($("#view"));
     if (page === "ayarlar" && db.mode === "cloud")
       db.session().then((s) => { const w = $("#whoami"); if (w && s) w.textContent = "Giriş yapan: " + s.user.email; });
   }
@@ -861,6 +900,15 @@
       render();
       toast("Bölüm silindi");
     },
+    "quick-add": () => {
+      const { page, id } = currentRoute();
+      openSheet("Yeni kayıt", [
+        { act: "new-payment", agr: page === "anlasma" ? id : "", label: "Ödeme ekle", hint: "Taşerona yapılan ödeme, borçtan düşer" },
+        { act: "new-expense", label: "Gider ekle", hint: "Eleman, yemek, muhasebe, malzeme… (fatura eklenebilir)" },
+        { act: "new-agreement", label: "Taşeron anlaşması ekle", hint: "m² × birim fiyat" },
+      ]);
+    },
+    "more-menu": () => openSheet("Menü", MORE_PAGES.map((m) => ({ href: "#/" + m.page, label: m.label, hint: m.hint }))),
     "new-agreement": () => agreementForm(),
     "edit-agreement": (d) => agreementForm(agrById(d.id)),
     "del-agreement": async (d) => {
@@ -939,6 +987,7 @@
   };
 
   document.addEventListener("click", async (ev) => {
+    if (ev.target.closest("[data-sheet-close]")) $("#modal").close();
     const el = ev.target.closest("[data-act]");
     if (!el) return;
     ev.preventDefault();
