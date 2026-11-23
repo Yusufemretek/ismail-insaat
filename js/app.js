@@ -83,6 +83,7 @@
     projects: [], agreements: [], payments: [], expenses: [],
     project: store.get("aktifProje", "all"),
     expFilter: { cat: "", month: "" },
+    expOpen: new Set(),
     payFilter: { month: "" },
     costBasis: store.get("maliyetEsasi", "projected"),
   };
@@ -100,6 +101,10 @@
   const agrById = (id) => S.agreements.find((a) => a.id === id);
   const agrTotal = (a) => (Number(a.quantity) || 0) * (Number(a.unit_price) || 0);
   const agrPaid = (a) => S.payments.reduce((s, p) => s + (p.agreement_id === a.id ? Number(p.amount) || 0 : 0), 0);
+  // Ödenen para kaç birimi (m²) karşılıyor? Ön ödemelerde kalan m²'yi görmek için.
+  const qtyFor = (a, amount) => ((Number(a.unit_price) || 0) > 0 ? amount / Number(a.unit_price) : null);
+  const agrQtyLeft = (a, paid = agrPaid(a)) => { const q = qtyFor(a, paid); return q == null ? null : Math.max(0, (Number(a.quantity) || 0) - q); };
+  const qtyTxt = (a, q) => (q == null ? "—" : `${num(q)} ${esc(a.unit || "")}`);
   const sum = (list, f = (x) => x.amount) => list.reduce((s, x) => s + (Number(f(x)) || 0), 0);
   const byDateDesc = (a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || ""));
   const agrLabel = (a) => (a ? `${a.contractor}${a.job_type ? " – " + a.job_type : ""}` : "Silinmiş anlaşma");
@@ -341,8 +346,10 @@
         if (!a) return;
         const rem = remainingOf(a);
         const amt = Number.isFinite(v.amount) ? v.amount : 0;
-        $("#f__rem", form).innerHTML = `<span class="muted small">Anlaşma ${money(agrTotal(a))} · Kalan borç ${money(rem)}</span>
-          <span class="big">Bu ödemeden sonra kalan: ${money(rem - amt)}</span>`;
+        const qAfter = qtyFor(a, agrTotal(a) - rem + amt);
+        $("#f__rem", form).innerHTML = `<span class="muted small">Anlaşma ${money(agrTotal(a))} · Kalan borç ${money(rem)}${qtyFor(a, amt) && amt ? ` · Bu ödeme ${qtyTxt(a, qtyFor(a, amt))} karşılığı` : ""}</span>
+          <span class="big">Bu ödemeden sonra kalan: ${money(rem - amt)}</span>
+          ${qAfter == null ? "" : `<span class="muted small">Kalan: ${qtyTxt(a, Math.max(0, (Number(a.quantity) || 0) - qAfter))}</span>`}`;
       },
       onSubmit: async (v, f) => {
         const a = agrById(v.agreement_id);
@@ -357,12 +364,12 @@
     });
   }
 
-  function expenseForm(e) {
+  function expenseForm(e, preset = {}) {
     if (!e && needProject()) return;
     const cats = [...new Set([...EXPENSE_CATS, ...S.expenses.map((x) => x.category).filter(Boolean)])];
     openForm({
       title: e ? "Gideri düzenle" : "Gider ekle",
-      values: e || { project_id: defaultProject(), date: today() },
+      values: e || { project_id: defaultProject(), date: today(), ...preset },
       fields: [
         { name: "project_id", label: "Proje", type: "select", options: projectOptions(), required: true, full: true },
         { name: "category", label: "Gider türü", list: cats, required: true, placeholder: "Yemek, Muhasebe, Eleman…" },
@@ -475,7 +482,7 @@
         return `<a class="row-card" href="#/anlasma/${esc(a.id)}" data-search="${esc((a.contractor + " " + (a.job_type || "") + " " + projName(a.project_id)).toLocaleLowerCase("tr"))}">
           <div class="rc-main">
             <div class="rc-title">${esc(a.contractor)} ${a.job_type ? `<span class="badge">${esc(a.job_type)}</span>` : ""} ${done ? `<span class="badge good">Ödendi</span>` : ""}</div>
-            <div class="rc-sub">${showProjectCol() ? esc(projName(a.project_id)) + " · " : ""}${num(a.quantity)} ${esc(a.unit || "")} × ${money(a.unit_price)}</div>
+            <div class="rc-sub">${showProjectCol() ? esc(projName(a.project_id)) + " · " : ""}${num(a.quantity)} ${esc(a.unit || "")} × ${money(a.unit_price)}${p > 0 && !done && agrQtyLeft(a, p) != null ? ` · <b>Kalan ${qtyTxt(a, agrQtyLeft(a, p))}</b>` : ""}</div>
             <div class="progress" title="%${pct.toFixed(0)} ödendi"><span style="width:${pct.toFixed(1)}%"></span></div>
           </div>
           <div class="rc-amounts">
@@ -508,6 +515,9 @@
         <div class="kpi"><div class="label">Anlaşma tutarı</div><div class="value">${money(t)}</div><div class="hint">${num(a.quantity)} ${esc(a.unit || "")} × ${money(a.unit_price)}</div></div>
         <div class="kpi"><div class="label">Ödenen</div><div class="value good">${money(paid)}</div><div class="hint">${P.length} ödeme</div></div>
         <div class="kpi accent"><div class="label">Kalan borç</div><div class="value bad">${money(t - paid)}</div></div>
+        ${qtyFor(a, paid) == null ? "" : `
+        <div class="kpi"><div class="label">Ödenen karşılığı</div><div class="value good">${qtyTxt(a, qtyFor(a, paid))}</div><div class="hint">ödenen ÷ birim fiyat</div></div>
+        <div class="kpi"><div class="label">Kalan ${esc(a.unit || "miktar")}</div><div class="value bad">${qtyTxt(a, agrQtyLeft(a, paid))}</div><div class="hint">toplam ${num(a.quantity)} ${esc(a.unit || "")}</div></div>`}
       </div>
       <div class="card">
         <div class="info-grid">
@@ -522,12 +532,13 @@
       <div class="card">
         <h2>Ödemeler</h2>
         ${P.length ? `<div class="table-wrap"><table>
-          <thead><tr><th>Tarih</th><th>Şekil</th><th>Açıklama</th><th class="r">Tutar</th><th></th></tr></thead>
+          <thead><tr><th>Tarih</th><th>Şekil</th><th>Açıklama</th><th class="r">Karşılığı</th><th class="r">Tutar</th><th></th></tr></thead>
           <tbody>${P.map((p) => `<tr>
             <td class="num">${fmtDate(p.date)}</td><td>${esc(p.method || "")}</td><td>${esc(p.notes || "")} ${fileBtn(p)}</td>
+            <td class="r num muted">${qtyFor(a, Number(p.amount) || 0) == null ? "" : qtyTxt(a, qtyFor(a, Number(p.amount) || 0))}</td>
             <td class="r num">${money(p.amount)}</td>
             <td><div class="row-actions"><button class="btn sm ghost" data-act="edit-payment" data-id="${esc(p.id)}">Düzenle</button><button class="btn sm ghost danger" data-act="del-payment" data-id="${esc(p.id)}">Sil</button></div></td></tr>`).join("")}</tbody>
-          <tfoot><tr><td colspan="3">Toplam ödenen</td><td class="r num">${money(paid)}</td><td></td></tr></tfoot>
+          <tfoot><tr><td colspan="3">Toplam ödenen</td><td class="r num">${qtyFor(a, paid) == null ? "" : qtyTxt(a, qtyFor(a, paid))}</td><td class="r num">${money(paid)}</td><td></td></tr></tfoot>
         </table></div>` : emptyBox("Bu anlaşmaya henüz ödeme yapılmadı.")}
       </div>`;
   }
@@ -592,16 +603,43 @@
         ${Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, v]) => `<div class="kpi"><div class="label">${esc(c)}</div><div class="value">${money(v)}</div></div>`).join("")}
       </div>
       <div class="card">
-        ${E.length ? `<div class="table-wrap"><table>
-          <thead><tr><th>Tarih</th><th>Tür</th>${projTh()}<th>Kime / Açıklama</th><th class="r">Tutar</th><th></th></tr></thead>
-          <tbody>${E.map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><span class="badge gray">${esc(e.category || "Diğer")}</span></td>
-            ${projCell(e.project_id)}<td>${e.paid_to ? `<b>${esc(e.paid_to)}</b><br>` : ""}<span class="muted small">${esc(e.description || "")}</span> ${fileBtn(e)}</td>
-            <td class="r num">${money(e.amount)}</td>
-            <td><div class="row-actions"><button class="btn sm ghost" data-act="edit-expense" data-id="${esc(e.id)}">Düzenle</button><button class="btn sm ghost danger" data-act="del-expense" data-id="${esc(e.id)}">Sil</button></div></td></tr>`).join("")}</tbody>
-          <tfoot><tr><td colspan="${showProjectCol() ? 4 : 3}">Toplam</td><td class="r num">${money(sum(E))}</td><td></td></tr></tfoot>
-        </table></div>` : emptyBox("Kayıtlı gider yok.", `<button class="btn primary" data-act="new-expense">+ Gider ekle</button>`)}
+        ${E.length ? `<div class="exp-groups">${groupExpenses(E).map((g) => {
+          const open = S.expOpen.has(g.key) || !!S.expFilter.cat;
+          return `<div class="exp-group ${open ? "open" : ""}">
+            <button class="exp-head" data-act="toggle-exp-group" data-key="${esc(g.key)}" aria-expanded="${open}">
+              <span class="chev" aria-hidden="true">›</span>
+              <span class="eh-main"><b>${esc(g.name)}</b><span class="muted small">${g.items.length} kayıt · son ${fmtDate(g.items[0].date)}</span></span>
+              <b class="num">${money(sum(g.items))}</b>
+            </button>
+            ${open ? `<div class="exp-items">
+              ${g.items.map((e) => `<div class="exp-item">
+                <div class="ei-main">
+                  <div><span class="num">${fmtDate(e.date)}</span>${showProjectCol() ? ` <span class="badge gray">${esc(projName(e.project_id))}</span>` : ""}${e.paid_to ? ` · <b>${esc(e.paid_to)}</b>` : ""}</div>
+                  ${e.description ? `<div class="muted small">${esc(e.description)}</div>` : ""}
+                  <div class="muted small">Girildi: ${fmtDateTime(e.created_at)} ${fileBtn(e)}</div>
+                </div>
+                <div class="ei-side">
+                  <b class="num">${money(e.amount)}</b>
+                  <div class="row-actions"><button class="btn sm ghost" data-act="edit-expense" data-id="${esc(e.id)}">Düzenle</button><button class="btn sm ghost danger" data-act="del-expense" data-id="${esc(e.id)}">Sil</button></div>
+                </div>
+              </div>`).join("")}
+              <div class="exp-add no-print"><button class="btn sm" data-act="new-expense" data-cat="${esc(g.name)}">+ ${esc(g.name)} gideri ekle</button></div>
+            </div>` : ""}
+          </div>`;
+        }).join("")}
+          <div class="exp-total"><span>Toplam</span><b class="num">${money(sum(E))}</b></div>
+        </div>` : emptyBox("Kayıtlı gider yok.", `<button class="btn primary" data-act="new-expense">+ Gider ekle</button>`)}
       </div>`;
   }
+
+  // Aynı türdeki giderleri tek başlık altında topla ("Muhasebe" = "muhasebe ")
+  const catKey = (c) => String(c || "Diğer").trim().toLocaleLowerCase("tr");
+  function groupExpenses(E) {
+    const g = {};
+    E.forEach((e) => (g[catKey(e.category)] ||= { key: catKey(e.category), name: String(e.category || "Diğer").trim(), items: [] }).items.push(e));
+    return Object.values(g).sort((a, b) => sum(b.items) - sum(a.items));
+  }
+  const fmtDateTime = (ts) => (ts ? new Date(ts).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
   // ---------- Maliyet ----------
   const UNIT_TYPES = ["Daire", "Dükkan", "Ofis", "Depo", "Otopark"];
@@ -931,7 +969,11 @@
       render();
       toast("Ödeme silindi");
     },
-    "new-expense": () => expenseForm(),
+    "new-expense": (d) => expenseForm(null, d.cat ? { category: d.cat } : {}),
+    "toggle-exp-group": (d) => {
+      S.expOpen.has(d.key) ? S.expOpen.delete(d.key) : S.expOpen.add(d.key);
+      render();
+    },
     "edit-expense": (d) => expenseForm(S.expenses.find((e) => e.id === d.id)),
     "del-expense": async (d) => {
       const e = S.expenses.find((x) => x.id === d.id);
